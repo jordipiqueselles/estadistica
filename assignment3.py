@@ -18,20 +18,20 @@ class Gg1Simulation:
         self.arrivalTimeDistr = arrivalTimeDistr
         self.serviceTimeDistr = serviceTimeDistr
 
-    def reset(self):
+    def reset(self, sizeArr):
         self.L = 0  # total occupancy
         self.Lq = 0  # occupancy of the queue
         self.W = 0  # total waiting time
         self.Wq = 0  # waiting time in the queue
 
         # lists to save the statistics at some points
-        self.listL = []
-        self.listLq = []
-        self.listW = []
-        self.listWq = []
+        self.listL = np.zeros((sizeArr, 1))
+        self.listLq = np.zeros((sizeArr, 1))
+        self.listW = np.zeros((sizeArr, 1))
+        self.listWq = np.zeros((sizeArr, 1))
 
     def run(self, nClients=100000, whenToPrint=100, prnt=True, plot=True):
-        self.reset()
+        self.reset(nClients//whenToPrint - 1)
         t_last = 0  # arrival time to the system for the last client
         ohm_last = 0  # exit time for the last client
         for i in range(nClients):
@@ -39,9 +39,9 @@ class Gg1Simulation:
             tis = max(ti, ohm_last)  # arrival time to the server
             wqi = tis - ti  # waiting time in the queue
             serviceTime = self.serviceTimeDistr()  # service time
-            wi = tis + serviceTime  # exit time
+            wi = wqi + serviceTime  # time in the system
             t_last = ti  # update t_last
-            ohm_last = wi
+            ohm_last = wi + ti  # update ohm_last
 
             # update statistics
             self.L += wi
@@ -51,20 +51,23 @@ class Gg1Simulation:
 
             if i != 0 and i%whenToPrint == 0:
                 # update
-                self.listL.append(self.L/ti)
-                self.listLq.append(self.Lq/ti)
-                self.listW.append(self.W/(i+1))
-                self.listWq.append(self.Wq/(i+1))
+                idx = i // whenToPrint - 1
+                self.listL[idx] = self.L/ti
+                self.listLq[idx] = self.Lq/ti
+                self.listW[idx] = self.W/(i+1)
+                self.listWq[idx] = self.Wq/(i+1)
 
                 if prnt:
                     print("L:\t", round(self.listL[-1], 2), "\t\tLq:\t", round(self.listLq[-1], 2),
                           "\t\tW:\t", round(self.listW[-1], 2), "\t\tWq\t", round(self.listWq[-1], 2))
+
+        listOcServ = self.listL - self.listLq
         if plot:
             plt.figure()
-            plt.scatter(list(range(len(self.listL))), self.listL)
+            plt.scatter(list(range(len(listOcServ))), listOcServ)
             plt.title(self.title)
 
-        return self.listL, self.listLq, self.listW, self.listWq
+        return listOcServ, self.listL, self.listLq, self.listW, self.listWq
 
 
 def getMetricsRndDistr(rndDistr, nSamples=10000, verbose=True):
@@ -101,7 +104,7 @@ print()
 getMetricsRndDistr(funArrivals)
 
 listP = [0.4, 0.7, 0.85, 0.925]
-nRep = 1
+nRep = 5
 for p in listP:
     print("\n\np:", p)
 
@@ -113,21 +116,22 @@ for p in listP:
     for i in range(nRep):
         print("Repetition ", (i+1))
 
-        rnd.seed(i)
+        rnd.seed(p*1000+i)
         simulator = Gg1Simulation('Simulation rho ' + str(p), funArrivals, funService)
-        (listL, listLq, listW, listWq) = simulator.run(100000, 100, prnt=False, plot=False)
+        (listOcServ, listL, listLq, listW, listWq) = simulator.run(100000, 100, prnt=False, plot=False)
 
         Lq.append(listLq[-1])
         Wq.append(listWq[-1])
-        print("Mean L:", round(listL[-1], 3))
-        print("Mean Lq:", round(listLq[-1], 2))
-        print("Mean W:", round(listW[-1], 2))
-        print("Mean Wq:", round(listWq[-1], 2))
+        print("Mean OcServ:", listOcServ[-1].round(3))
+        print("Mean L:", listL[-1].round(2))
+        print("Mean Lq:", listLq[-1].round(2))
+        print("Mean W:", listW[-1].round(2))
+        print("Mean Wq:", listWq[-1].round(2))
         print()
 
     (_, _, Cs) = getTheoreticalValuesWeibull(0.5439, bService, True)
     (_, _, Ca) = getTheoreticalValuesWeibull(2, 88, False)
-    allenCuneen = (p/(1-p)) * ((Cs**2 + Ca**2)/2)
+    allenCuneen = (p*p/(1-p)) * ((Cs**2 + Ca**2)/2)
     print("Allen-Cuneen:", round(allenCuneen, 2))
     confIntLq = st.t.interval(0.95, nRep-1, loc=np.mean(Lq), scale=st.sem(Lq))
     print("Confidence interval for Lq:", confIntLq)
