@@ -81,7 +81,7 @@ def getMetricsRndDistr(rndDistr, nSamples=10000, plot=True):
 
     if plot:
         plt.figure()
-        plt.hist(samples, bins=min(nSamples/5, 100))
+        plt.hist(samples, bins=min(nSamples/5, 200))
 
     return mean, variance, coefVar
 
